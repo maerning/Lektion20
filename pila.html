@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pila-Hagel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Nunito+Sans:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#0b0d12;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center;touch-action:none;-webkit-user-select:none;user-select:none}
+  canvas{display:block;outline:none;aspect-ratio:16/9;width:100vw;height:auto}
+  @media (min-aspect-ratio:16/9){canvas{height:100vh;width:auto}}
+</style>
+</head>
+<body>
+<canvas id="cv" width="1280" height="720" tabindex="0" aria-label="Pila-Hagel – Konjunktivformen fangen"></canvas>
+<script src="kit.js"></script>
+<script>
+(() => {
+const { ctx, W, H, F_HEAD, GOLD, CREAM, IMG, store, SND, rnd, shuffle, rr, txt, txtBox, fitText, button, topButtons, heart, drawBg, sprite, shadow, burst, floatText, fxDraw, input } = K;
+K.load(['bg.jpg', 'held.png', 'legionaer.png']);
+
+// Formen: [Form, Modus I/K, Tempus, Genus a/p, Bestimmung]
+const FORMEN = [
+  ['vocet', 'K', 'praes', 'a', '3. Sg. Konj. Präs. Akt.'], ['vocat', 'I', 'praes', 'a', '3. Sg. Ind. Präs. Akt.'], ['vocabit', 'I', 'fut', 'a', '3. Sg. Fut. I Akt.'],
+  ['moneat', 'K', 'praes', 'a', '3. Sg. Konj. Präs. Akt.'], ['monet', 'I', 'praes', 'a', '3. Sg. Ind. Präs. Akt.'], ['monebat', 'I', 'impf', 'a', '3. Sg. Ind. Impf. Akt.'],
+  ['audiat', 'K', 'praes', 'a', '3. Sg. Konj. Präs. Akt.'], ['audit', 'I', 'praes', 'a', '3. Sg. Ind. Präs. Akt.'], ['audiet', 'I', 'fut', 'a', '3. Sg. Fut. I Akt.'],
+  ['agant', 'K', 'praes', 'a', '3. Pl. Konj. Präs. Akt.'], ['agent', 'I', 'fut', 'a', '3. Pl. Fut. I Akt.'], ['agunt', 'I', 'praes', 'a', '3. Pl. Ind. Präs. Akt.'],
+  ['capiant', 'K', 'praes', 'a', '3. Pl. Konj. Präs. Akt.'], ['capient', 'I', 'fut', 'a', '3. Pl. Fut. I Akt.'],
+  ['sit', 'K', 'praes', 'a', '3. Sg. Konj. Präs. (esse)'], ['est', 'I', 'praes', 'a', '3. Sg. Ind. Präs. (esse)'],
+  ['possint', 'K', 'praes', 'a', '3. Pl. Konj. Präs. (posse)'], ['possunt', 'I', 'praes', 'a', '3. Pl. Ind. Präs. (posse)'],
+  ['velint', 'K', 'praes', 'a', '3. Pl. Konj. Präs. (velle)'], ['volunt', 'I', 'praes', 'a', '3. Pl. Ind. Präs. (velle)'],
+  ['eat', 'K', 'praes', 'a', '3. Sg. Konj. Präs. (ire)'], ['it', 'I', 'praes', 'a', '3. Sg. Ind. Präs. (ire)'],
+  ['defendatis', 'K', 'praes', 'a', '2. Pl. Konj. Präs. Akt.'], ['defenditis', 'I', 'praes', 'a', '2. Pl. Ind. Präs. Akt.'],
+  ['ceperim', 'K', 'perf', 'a', '1. Sg. Konj. Perf. Akt.'], ['cepi', 'I', 'perf', 'a', '1. Sg. Ind. Perf. Akt.'],
+  ['dederint', 'K', 'perf', 'a', '3. Pl. Konj. Perf. Akt.'], ['dederunt', 'I', 'perf', 'a', '3. Pl. Ind. Perf. Akt.'],
+  ['fuerit', 'K', 'perf', 'a', '3. Sg. Konj. Perf. (esse)'], ['fuit', 'I', 'perf', 'a', '3. Sg. Ind. Perf. (esse)'],
+  ['vocaverint', 'K', 'perf', 'a', '3. Pl. Konj. Perf. Akt.'], ['vocaverunt', 'I', 'perf', 'a', '3. Pl. Ind. Perf. Akt.'],
+  ['monuerit', 'K', 'perf', 'a', '3. Sg. Konj. Perf. Akt.'], ['monuit', 'I', 'perf', 'a', '3. Sg. Ind. Perf. Akt.'],
+  ['rapuerint', 'K', 'perf', 'a', '3. Pl. Konj. Perf. Akt.'], ['rapuerunt', 'I', 'perf', 'a', '3. Pl. Ind. Perf. Akt.'],
+  ['audiverim', 'K', 'perf', 'a', '1. Sg. Konj. Perf. Akt.'], ['potuerint', 'K', 'perf', 'a', '3. Pl. Konj. Perf. (posse)'],
+  ['vocetur', 'K', 'praes', 'p', '3. Sg. Konj. Präs. Pass.'], ['vocatur', 'I', 'praes', 'p', '3. Sg. Ind. Präs. Pass.'],
+  ['capiantur', 'K', 'praes', 'p', '3. Pl. Konj. Präs. Pass.'], ['capiuntur', 'I', 'praes', 'p', '3. Pl. Ind. Präs. Pass.'],
+  ['liberentur', 'K', 'praes', 'p', '3. Pl. Konj. Präs. Pass.'], ['liberantur', 'I', 'praes', 'p', '3. Pl. Ind. Präs. Pass.'],
+  ['moneamur', 'K', 'praes', 'p', '1. Pl. Konj. Präs. Pass.'], ['monemur', 'I', 'praes', 'p', '1. Pl. Ind. Präs. Pass.'],
+  ['agatur', 'K', 'praes', 'p', '3. Sg. Konj. Präs. Pass.'], ['agitur', 'I', 'praes', 'p', '3. Sg. Ind. Präs. Pass.'],
+  ['vincantur', 'K', 'praes', 'p', '3. Pl. Konj. Präs. Pass.'], ['audiaris', 'K', 'praes', 'p', '2. Sg. Konj. Präs. Pass.'],
+  ['vocati sint', 'K', 'perf', 'p', '3. Pl. Konj. Perf. Pass.'], ['vocati sunt', 'I', 'perf', 'p', '3. Pl. Ind. Perf. Pass.'],
+  ['captus sit', 'K', 'perf', 'p', '3. Sg. Konj. Perf. Pass.'], ['captus est', 'I', 'perf', 'p', '3. Sg. Ind. Perf. Pass.'],
+  ['monitae sint', 'K', 'perf', 'p', '3. Pl. Konj. Perf. Pass.'], ['liberata sit', 'K', 'perf', 'p', '3. Sg. Konj. Perf. Pass.'],
+  ['victi simus', 'K', 'perf', 'p', '1. Pl. Konj. Perf. Pass.'],
+].map(([f, m, t, g, b]) => ({ f, m, t, g, b }));
+
+const WELLEN = [
+  { titel: 'Fange nur KONJUNKTIVE!', kurz: 'nur Konjunktive', pool: FORMEN, ziel: x => x.m === 'K', nein: 'kein Konjunktiv', tipp: 'Moduszeichen -e- (a-Konj.) / -a- (alle anderen) · Perfekt: -eri- · Passiv: PPP + sim, sis, sit …' },
+  { titel: 'Fange nur KONJUNKTIV PERFEKT!', kurz: 'nur Konj. Perfekt', pool: FORMEN.filter(x => x.m === 'K'), ziel: x => x.t === 'perf', nein: 'kein Perfekt', tipp: 'Aktiv: Perfektstamm + -eri- + Endung · Passiv: PPP + sim, sis, sit …' },
+  { titel: 'Fange nur KONJUNKTIV PASSIV!', kurz: 'nur Konj. Passiv', pool: FORMEN.filter(x => x.m === 'K'), ziel: x => x.g === 'p', nein: 'kein Passiv', tipp: 'Präsens: -r, -ris, -tur, -mur, -mini, -ntur · Perfekt: PPP + sim, sis, sit …' },
+];
+const DAUER = 45, CATCH_Y = 520, GROUND = 650;
+
+const S = { mode: 'menu', tempo: 'ruhig' };
+let G = null;
+
+function start(tempo) {
+  S.tempo = tempo;
+  G = { welle: 0, t: 0, hearts: 3, score: 0, combo: 0, best: 0, items: [], spawn: 0.5, hx: W / 2, dir: 1, fehler: [], merke: null, merkeT: 0, shake: 0, flash: 0, gefangen: 0 };
+  S.mode = 'intro'; SND.horn();
+}
+function begin() { S.mode = 'play'; G.t = 0; G.items = []; G.spawn = 0.6; }
+function pause() { if (S.mode === 'play') S.mode = 'pause'; else if (S.mode === 'pause') S.mode = 'play'; }
+
+function spawn() {
+  const w = WELLEN[G.welle];
+  const want = Math.random() < 0.5;
+  const cands = w.pool.filter(x => w.ziel(x) === want);
+  const f = cands[Math.floor(Math.random() * cands.length)];
+  ctx.font = '800 30px "Nunito Sans", Arial'; const tw = Math.max(130, ctx.measureText(f.f).width + 44);
+  let x, tries = 0;
+  do { x = rnd(80 + tw / 2, W - 80 - tw / 2); tries++; } while (tries < 12 && G.items.some(it => Math.abs(it.x - x) < (it.w + tw) / 2 + 20 && it.y < 300));
+  const base = (S.tempo === 'ruhig' ? 58 : 82) + G.welle * 10;
+  G.items.push({ f, x, y: 120, w: tw, vy: base + rnd(0, 14), rot: rnd(-0.06, 0.06) });
+}
+
+function catchItem(it) {
+  const w = WELLEN[G.welle];
+  it.done = true;
+  if (w.ziel(it.f)) {
+    G.combo++; G.best = Math.max(G.best, G.combo); G.gefangen++;
+    const pts = 10 + Math.min(40, (G.combo - 1) * 5); G.score += pts;
+    burst(it.x, it.y, GOLD, 16); floatText('+' + pts, it.x, it.y - 30, GOLD); SND.coin();
+  } else {
+    G.combo = 0; G.hearts--; G.shake = 0.3; G.flash = 0.35; SND.wrong();
+    burst(it.x, it.y, '#ff5a4f', 18);
+    G.merke = it.f.f + ' = ' + it.f.b + '  →  ' + w.nein; G.merkeT = 3.2;
+    G.fehler.push(it.f.f + ' = ' + it.f.b);
+    if (G.hearts <= 0) setTimeout(() => end(), 900);
+  }
+}
+function end() {
+  if (S.mode === 'over') return;
+  S.mode = 'over';
+  const key = 'pila_' + S.tempo, old = store.get(key, 0);
+  G.neu = G.score > old; if (G.neu) store.set(key, G.score); G.rekord = Math.max(old, G.score);
+}
+
+K.onKey = code => {
+  if (code === 'KeyP' || code === 'Escape') pause();
+  if (code === 'Space' || code === 'Enter') { if (S.mode === 'intro') begin(); else if (S.mode === 'over') start(S.tempo); }
+};
+K.onTap = () => { if (S.mode === 'intro') begin(); };
+
+function update(dt) {
+  if (S.mode !== 'play') return;
+  const g = G, w = WELLEN[g.welle];
+  g.t += dt; g.merkeT = Math.max(0, g.merkeT - dt); g.shake = Math.max(0, g.shake - dt); g.flash = Math.max(0, g.flash - dt);
+  // Bewegung
+  const sp = 620; let mv = 0;
+  if (input.keys.ArrowLeft || input.keys.KeyA) mv = -1;
+  if (input.keys.ArrowRight || input.keys.KeyD) mv = 1;
+  if (mv) g.hx += mv * sp * dt;
+  else if (input.down && input.y > 140) { const d = input.x - g.hx; if (Math.abs(d) > 6) { mv = Math.sign(d); g.hx += Math.sign(d) * Math.min(Math.abs(d), sp * 1.3 * dt); } }
+  if (mv) g.dir = mv;
+  g.hx = Math.max(70, Math.min(W - 70, g.hx));
+  // Spawnen
+  g.spawn -= dt;
+  const live = g.items.filter(i => !i.done).length;
+  const interval = (S.tempo === 'ruhig' ? 2.3 : 1.7) - g.welle * 0.15;
+  if (g.spawn <= 0 && g.t < DAUER - 3 && live < (S.tempo === 'ruhig' ? 3 : 4)) { spawn(); g.spawn = interval; }
+  for (const it of g.items) {
+    if (it.done) continue;
+    it.y += it.vy * dt;
+    if (it.y > CATCH_Y - 20 && it.y < CATCH_Y + 40 && Math.abs(it.x - g.hx) < it.w / 2 + 40) catchItem(it);
+    else if (it.y > GROUND) {
+      it.done = true;
+      if (w.ziel(it.f)) { g.combo = 0; floatText('verpasst', it.x, GROUND - 30, '#c9c9c9'); burst(it.x, GROUND, '#888', 6); }
+    }
+  }
+  g.items = g.items.filter(i => !i.done);
+  if (g.t >= DAUER && !g.items.length) {
+    if (g.welle < WELLEN.length - 1) { g.welle++; S.mode = 'intro'; SND.level(); g.hearts = Math.min(3, g.hearts + 1); }
+    else end();
+  }
+}
+
+function palisade() {
+  // Legionäre hinter der Palisade
+  for (let i = 0; i < 7; i++) sprite(IMG.legionaer, 100 + i * 180 + (i % 2) * 30, 196, 150, false, 0.95);
+  const top = 96, bot = 168;
+  for (let x = -10; x < W + 30; x += 30) {
+    ctx.fillStyle = (x / 30) % 2 ? '#3e2b1b' : '#4a3321';
+    ctx.beginPath(); ctx.moveTo(x, bot); ctx.lineTo(x, top + 14); ctx.lineTo(x + 14, top - 4 + ((x * 7) % 9)); ctx.lineTo(x + 28, top + 14); ctx.lineTo(x + 28, bot); ctx.fill();
+  }
+  ctx.fillStyle = '#2b1e13'; ctx.fillRect(0, bot - 26, W, 10); ctx.fillRect(0, bot - 2, W, 6);
+}
+
+function drawItem(it) {
+  ctx.save(); ctx.translate(it.x, it.y); ctx.rotate(it.rot);
+  rr(-it.w / 2, -30, it.w, 60, 10); ctx.fillStyle = '#e9dcbc'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#6b4c2a'; ctx.stroke();
+  ctx.fillStyle = '#6b4c2a'; ctx.beginPath(); ctx.arc(-it.w / 2 + 12, 0, 4, 0, 7); ctx.arc(it.w / 2 - 12, 0, 4, 0, 7); ctx.fill();
+  txt(it.f.f, 0, 2, { a: 'center', s: 30, c: '#2a1c10' });
+  ctx.restore();
+}
+
+function hud() {
+  rr(10, 10, 520, 50, 12); ctx.fillStyle = 'rgba(10,12,18,.78)'; ctx.fill();
+  for (let i = 0; i < 3; i++) heart(42 + i * 38, 37, 30, i < G.hearts);
+  txt(G.score + '', 170, 36, { s: 26, c: GOLD, f: F_HEAD, w: 900 });
+  txt('Welle ' + (G.welle + 1) + '/3 · ' + WELLEN[G.welle].kurz, 270, 36, { s: 18, c: CREAM });
+  // Zeitbalken
+  const p = Math.max(0, 1 - G.t / DAUER);
+  rr(560, 22, 300, 14, 7); ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fill();
+  if (p > 0) { rr(560, 22, 300 * p, 14, 7); ctx.fillStyle = GOLD; ctx.fill(); }
+  if (G.combo >= 3) txt('Serie ×' + G.combo, G.hx, GROUND + 40, { a: 'center', s: 22, c: GOLD, stroke: '#000', sw: 4 });
+  topButtons(pause);
+}
+
+function merke() {
+  if (G.merkeT <= 0) return;
+  const a = Math.min(1, G.merkeT * 3);
+  ctx.save(); ctx.globalAlpha = a;
+  rr(200, 200, W - 400, 80, 14); ctx.fillStyle = 'rgba(14,16,22,.93)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#ff8a7e'; ctx.stroke();
+  txt('MERKE DIR', W / 2, 220, { a: 'center', s: 15, c: '#ff8a7e', f: F_HEAD, w: 700 });
+  txtBox(G.merke, 200, 228, W - 400, 50, { s: 24, lines: 1 });
+  ctx.restore();
+}
+
+function hero(t) {
+  const moving = input.keys.ArrowLeft || input.keys.ArrowRight || input.keys.KeyA || input.keys.KeyD || (input.down && Math.abs(input.x - G.hx) > 8);
+  const bob = moving ? Math.abs(Math.sin(t * 16)) * 6 : Math.sin(t * 3) * 2;
+  shadow(G.hx, GROUND + 4, 60);
+  sprite(IMG.held, G.hx, GROUND - bob, 150, G.dir < 0);
+  // Fangzone (Schild über dem Kopf)
+  ctx.save(); ctx.translate(G.hx, CATCH_Y + 10);
+  ctx.beginPath(); ctx.ellipse(0, 0, 58, 16, 0, Math.PI, 0); ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(232,184,74,.85)'; ctx.stroke();
+  ctx.restore();
+}
+
+function ground() {
+  const gr = ctx.createLinearGradient(0, GROUND - 6, 0, H); gr.addColorStop(0, '#141a14'); gr.addColorStop(1, '#07090a');
+  ctx.fillStyle = gr; ctx.fillRect(0, GROUND - 4, W, H - GROUND + 4);
+}
+
+function menu(t) {
+  drawBg(t * 10, 0.5);
+  sprite(IMG.legionaer, 1010, 610, 330, false);
+  sprite(IMG.held, 820, 640, 240, false);
+  txt('PILA-HAGEL', 80, 110, { s: 76, c: GOLD, f: F_HEAD, w: 900, stroke: '#3b0a0e', sw: 10 });
+  txt('Prima · Lektion 20  ·  Konjunktivformen erkennen', 84, 168, { s: 24, c: CREAM });
+  txt('Die Römer schleudern Formen über die Palisade.', 84, 204, { s: 21, c: 'rgba(243,233,210,.85)', w: 600 });
+  txt('Fang nur die richtigen – die falschen lässt du fallen.', 84, 232, { s: 21, c: 'rgba(243,233,210,.85)', w: 600 });
+  [['ruhig', 'I', 'Gemütlich', 'langsam fallende Formen'], ['schnell', 'II', 'Sturmangriff', 'mehr und schneller']].forEach(([k, n, ti, su], i) => {
+    const x = 80 + i * 340, y = 280, w = 320, h = 110;
+    button(x, y, w, h, () => {
+      txt(n, x + 40, y + h / 2, { a: 'center', s: 34, c: GOLD, f: F_HEAD, w: 900 });
+      txt(ti, x + 78, y + 40, { s: 25, c: '#fff' }); txt(su, x + 78, y + 72, { s: 18, c: 'rgba(243,233,210,.75)', w: 600 });
+      const r = store.get('pila_' + k, 0); if (r) txt('Rekord ' + r, x + w - 14, y + 96, { a: 'right', s: 14, c: '#9fc3ff' });
+    }, () => start(k));
+  });
+  rr(80, 420, 660, 170, 14); ctx.fillStyle = 'rgba(14,16,22,.82)'; ctx.fill();
+  txt('So geht\'s', 104, 448, { s: 20, c: GOLD, f: F_HEAD, w: 700 });
+  ['Bewegen: Pfeiltasten / A, D – oder Finger bzw. Maus gedrückt halten.', '3 Wellen à 45 Sekunden, jede mit eigener Regel:', '① nur Konjunktive  ② nur Konj. Perfekt  ③ nur Konj. Passiv', 'Falsche Form gefangen = ein Herz weg. Neue Welle = ein Herz zurück.']
+    .forEach((l, i) => txt(l, 104, 482 + i * 28, { s: 18, c: CREAM, w: 600 }));
+  topButtons();
+}
+
+function intro(t) {
+  drawBg(0, 0.6); palisade(); ground(); hero(t);
+  const w = WELLEN[G.welle];
+  rr(190, 230, W - 380, 290, 18); ctx.fillStyle = 'rgba(14,16,22,.94)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = GOLD; ctx.stroke();
+  txt('WELLE ' + (G.welle + 1), W / 2, 274, { a: 'center', s: 30, c: GOLD, f: F_HEAD, w: 900 });
+  txt(w.titel, W / 2, 330, { a: 'center', s: 42, c: '#fff', f: F_HEAD, w: 900 });
+  txtBox('Erinnerung: ' + w.tipp, 230, 360, W - 460, 80, { s: 21, lines: 2, c: 'rgba(243,233,210,.9)' });
+  button(W / 2 - 140, 450, 280, 56, 'Los geht\'s!', begin, { s: 24, fill: '#7d1a20', line: GOLD });
+  hud();
+}
+
+function over() {
+  drawBg(0, 0.72);
+  const lebt = G.hearts > 0;
+  txt(lebt ? 'DIE PALISADE HÄLT!' : 'ÜBERRANNT', W / 2, 92, { a: 'center', s: 56, c: lebt ? GOLD : '#ff8a7e', f: F_HEAD, w: 900, stroke: '#2a0608', sw: 10 });
+  txt(lebt ? 'Alle drei Wellen überstanden.' : 'Die Römer waren diesmal stärker – nochmal!', W / 2, 150, { a: 'center', s: 24, c: CREAM });
+  const box = (x, l, v, c) => { rr(x, 186, 230, 92, 14); ctx.fillStyle = 'rgba(14,16,22,.9)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(232,184,74,.5)'; ctx.stroke(); txt(v, x + 115, 222, { a: 'center', s: 34, c, f: F_HEAD, w: 900 }); txt(l, x + 115, 260, { a: 'center', s: 16, c: 'rgba(243,233,210,.75)', w: 600 }); };
+  box(165, 'Punkte' + (G.neu ? ' · NEUER REKORD!' : ''), G.score + '', GOLD);
+  box(410, 'richtig gefangen', G.gefangen + '', '#8fe0a5');
+  box(655, 'beste Serie', '×' + G.best, '#9fc3ff');
+  box(900, 'Rekord', G.rekord + '', CREAM);
+  rr(165, 298, 965, 290, 14); ctx.fillStyle = 'rgba(14,16,22,.9)'; ctx.fill();
+  if (!G.fehler.length) txt('Keine einzige falsche Form gefangen. Stark!', W / 2, 440, { a: 'center', s: 28, c: '#8fe0a5' });
+  else {
+    txt('Diese Formen hast du falsch gefangen:', 190, 326, { s: 20, c: '#ff8a7e', f: F_HEAD, w: 700 });
+    [...new Set(G.fehler)].slice(0, 6).forEach((f, i) => txt('• ' + f, 190, 366 + i * 38, { s: 22, c: CREAM, w: 700 }));
+  }
+  button(W / 2 - 290, 612, 270, 66, 'Nochmal', () => start(S.tempo), { s: 26, fill: '#7d1a20', line: GOLD });
+  button(W / 2 + 20, 612, 270, 66, 'Menü', () => { S.mode = 'menu'; }, { s: 26 });
+  topButtons();
+}
+
+function draw(t) {
+  if (S.mode === 'menu') return menu(t);
+  if (S.mode === 'over') return over();
+  if (S.mode === 'intro') return intro(t);
+  ctx.save();
+  if (G.shake > 0) ctx.translate(rnd(-8, 8) * G.shake * 3, rnd(-6, 6) * G.shake * 3);
+  drawBg(0, 0.35); palisade(); ground();
+  G.items.forEach(drawItem);
+  hero(t);
+  fxDraw();
+  ctx.restore();
+  if (G.flash > 0) { ctx.fillStyle = `rgba(160,20,30,${G.flash * 0.6})`; ctx.fillRect(0, 0, W, H); }
+  rr(W / 2 - 230, 70, 460, 0, 0);
+  merke(); hud();
+  if (S.mode === 'pause') {
+    ctx.fillStyle = 'rgba(6,8,12,.7)'; ctx.fillRect(0, 0, W, H);
+    txt('PAUSE', W / 2, 260, { a: 'center', s: 72, c: GOLD, f: F_HEAD, w: 900 });
+    button(W / 2 - 150, 330, 300, 66, 'Weiter', pause, { s: 26, fill: '#7d1a20', line: GOLD });
+    button(W / 2 - 150, 412, 300, 66, 'Menü', () => { S.mode = 'menu'; }, { s: 26 });
+  }
+}
+
+K.run(update, draw);
+window.__game = { S, get G() { return G; }, start, begin, WELLEN };
+})();
+</script>
+</body>
+</html>

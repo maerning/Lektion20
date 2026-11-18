@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mons Graupius</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Nunito+Sans:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#0b0d12;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+  canvas{display:block;outline:none;aspect-ratio:16/9;width:100vw;height:auto}
+  @media (min-aspect-ratio:16/9){canvas{height:100vh;width:auto}}
+</style>
+</head>
+<body>
+<canvas id="cv" width="1280" height="720" tabindex="0" aria-label="Mons Graupius – Nebensätze bestimmen"></canvas>
+<script src="kit.js"></script>
+<script>
+(() => {
+const { ctx, W, H, F_HEAD, F_TXT, GOLD, CREAM, IMG, store, SND, rnd, shuffle, rr, txt, txtBox, fitText, button, topButtons, drawBg, sprite, shadow, burst, floatText, fxDraw } = K;
+K.load(['bg.jpg', 'held.png', 'legionaer.png']);
+
+const TYPEN = ['indirekter Fragesatz', 'Begehrsatz', 'Finalsatz', 'Konsekutivsatz', 'Fürchten: ne = „dass“'];
+const T = { F: 0, B: 1, Fi: 2, K: 3, T: 4 };
+// [Satz, einleitendes Wort, Typ, richtige Übersetzung der Einleitung, Hinweis]
+const SAETZE = [
+  ['Nescio, cur Romani hic sint.', 'cur', 'F', 'warum', 'nescire (nicht wissen) + Fragewort cur'],
+  ['Calgacus milites monet, ut patriam defendant.', 'ut', 'B', 'dass / zu + Infinitiv', 'monere = ermahnen → Verb des Forderns'],
+  ['Britanni pugnant, ne in servitutem ducantur.', 'ne', 'Fi', 'damit nicht / um nicht zu', 'kein Signal im Hauptsatz – „um nicht zu“ passt → Absicht'],
+  ['Romani tam crudeles sunt, ut omnes eos timeant.', 'ut', 'K', '(so)dass', 'tam (so) im Hauptsatz → Folge'],
+  ['Timeo, ne hostes castra capiant.', 'ne', 'T', 'dass', 'timere + ne → „dass“'],
+  ['Britanni quaerunt, quid Romani in Britannia quaerant.', 'quid', 'F', 'was', 'quaerere (fragen) + Fragewort quid'],
+  ['Romani a Britannis poscunt, ut obsides dent.', 'ut', 'B', 'dass / zu + Infinitiv', 'poscere = fordern → Begehrsatz'],
+  ['Romani veniunt, ut opes rapiant.', 'ut', 'Fi', 'damit / um … zu', 'kein Signal im Hauptsatz – „um zu“ passt → Absicht'],
+  ['Tanta erat ira Britannorum, ut Romani fugerent.', 'ut', 'K', '(so)dass', 'tantus (so groß) im Hauptsatz → Folge'],
+  ['Cogitate, utrum servi an liberi esse velitis!', 'utrum', 'F', 'ob … oder', 'cogitare (überlegen) + utrum … an'],
+  ['Dux milites monet, ne castra relinquant.', 'ne', 'B', 'dass nicht / nicht zu + Inf.', 'monere = ermahnen → Begehrsatz, verneint mit ne'],
+  ['Calgacus nescit, ubi hostes sint.', 'ubi', 'F', 'wo', 'nescire + Fragewort ubi'],
+  ['Britanni conveniunt, ne liberi capiantur.', 'ne', 'Fi', 'damit nicht / um nicht zu', 'kein Signal im Hauptsatz – Absicht'],
+  ['Dux timet, ne milites se deserant.', 'ne', 'T', 'dass', 'timere + ne → „dass“'],
+  ['Hostes ita pugnant, ut Romani non vincant.', 'ut', 'K', 'sodass … nicht', 'ita (so) im Hauptsatz → Folge, verneint mit ut … non'],
+  ['Quaero, venerintne Romani.', 'venerintne', 'F', 'ob', 'quaerere + -ne → „ob“'],
+  ['Senator servis imperat, ut frumentum parent.', 'ut', 'B', 'dass / zu + Infinitiv', 'imperare = befehlen → Begehrsatz'],
+  ['Calgacus suos orat, ut fortiter pugnent.', 'ut', 'B', 'dass / zu + Infinitiv', 'orare = bitten → Begehrsatz'],
+  ['Romani castra muniunt, ne a Britannis capiantur.', 'ne', 'Fi', 'damit nicht / um nicht zu', 'kein Signal im Hauptsatz – Absicht'],
+  ['Dic mihi, quantas opes Romani rapuerint.', 'quantas', 'F', 'wie viele / wie große', 'dicere + Fragewort quantus'],
+];
+const DIST = {
+  F: ['dass', 'damit', 'sodass', 'wie'],
+  B: ['damit / um … zu', '(so)dass', 'dass nicht / nicht zu + Inf.', 'dass / zu + Infinitiv', 'damit nicht / um nicht zu'],
+  Fi: ['dass / zu + Infinitiv', '(so)dass', 'damit / um … zu', 'damit nicht / um nicht zu', 'dass'],
+  K: ['damit / um … zu', 'dass nicht', 'wie', '(so)dass', 'sodass … nicht'],
+  T: ['damit nicht', 'dass nicht', 'ob', 'dass'],
+};
+const RUNDE = 12, PMAX = 6;
+const clean = w => w.replace(/[.,!?;:]/g, '').toLowerCase();
+
+const S = { mode: 'menu' };
+let G = null;
+
+function start() {
+  G = { pool: shuffle(SAETZE).slice(0, RUNDE), i: -1, p: 0, pv: 0, score: 0, fehler: [], streak: 0, best: 0, perfekt: 0 };
+  next(); S.mode = 'play'; SND.horn();
+}
+function next() {
+  G.i++;
+  if (G.i >= G.pool.length) return end();
+  const [satz, ein, typ, ueb, tipp] = G.pool[G.i];
+  const words = satz.split(' ');
+  const opts = shuffle([ueb, ...shuffle(DIST[typ].filter(o => o !== ueb)).slice(0, 3)]);
+  G.c = { satz, words, ein: words.findIndex(w => clean(w) === ein), typ: T[typ], ueb, tipp, opts, step: 1, wrong: new Set(), fehler: false, hint: '', hintT: 0, flashWord: -1, flashT: 0 };
+}
+function stepResult(ok, hint) {
+  const c = G.c;
+  if (ok) {
+    const first = !c.wrongThisStep;
+    if (first) { G.p = Math.min(PMAX, G.p + 0.5); G.score += 50; floatText('+50', W / 2, 360, GOLD); }
+    SND.coin(); c.step++; c.wrong = new Set(); c.wrongThisStep = false; c.hint = '';
+    if (c.step === 4) {
+      if (!c.fehler) { G.streak++; G.best = Math.max(G.best, G.streak); G.perfekt++; G.score += 25 * G.streak; SND.right(); burst(640 + G.p * 45, 560, GOLD, 30); }
+      else { G.streak = 0; G.fehler.push(c); }
+    }
+  } else {
+    c.wrongThisStep = true; c.fehler = true; G.p = Math.max(-PMAX, G.p - 0.5); SND.wrong();
+    c.hint = hint; burst(640 + G.p * 45, 560, '#ff5a4f', 14);
+    if (G.p <= -PMAX) setTimeout(() => end(), 900);
+  }
+}
+function tapWord(i) {
+  const c = G.c; if (c.step !== 1) return;
+  if (i === c.ein) stepResult(true);
+  else { c.flashWord = i; c.flashT = 0.6; stepResult(false, 'Nicht ganz: Gesucht ist das erste Wort des Nebensatzes (Fragewort, ut, ne, utrum oder ein Wort mit -ne).'); }
+}
+function chooseTyp(k) {
+  const c = G.c; if (c.step !== 2 || c.wrong.has(k)) return;
+  if (k === c.typ) stepResult(true); else { c.wrong.add(k); stepResult(false, 'Tipp: ' + c.tipp); }
+}
+function chooseUeb(o) {
+  const c = G.c; if (c.step !== 3 || c.wrong.has(o)) return;
+  if (o === c.ueb) stepResult(true); else { c.wrong.add(o); stepResult(false, 'Schau auf deine Entscheidung: ' + TYPEN[c.typ] + ' – wie übersetzt man dann ' + c.words[c.ein].replace(/[.,!?]/g, '') + '?'); }
+}
+function end() {
+  if (S.mode === 'over') return;
+  S.mode = 'over';
+  const old = store.get('schlacht', 0); G.neu = G.score > old; if (G.neu) store.set('schlacht', G.score); G.rekord = Math.max(old, G.score);
+  G.sieg = G.p > 0;
+  if (G.sieg) SND.level();
+}
+
+K.onKey = code => {
+  if (S.mode === 'play' && G.c.step === 4 && (code === 'Space' || code === 'Enter')) next();
+  if (S.mode === 'play' && G.c.step === 2) { const i = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].indexOf(code); if (i >= 0) chooseTyp(i); }
+  if (S.mode === 'play' && G.c.step === 3) { const i = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(code); if (i >= 0) chooseUeb(G.c.opts[i]); }
+  if (S.mode === 'menu' && (code === 'Space' || code === 'Enter')) start();
+};
+
+function update(dt) {
+  if (S.mode !== 'play' && S.mode !== 'over') return;
+  G.pv += (G.p - G.pv) * Math.min(1, dt * 3);
+  if (G.c) { G.c.flashT = Math.max(0, G.c.flashT - dt); }
+}
+
+// ---------- Schlachtfeld ----------
+function battlefield(t) {
+  const gy = 700, front = 640 + G.pv * 45;
+  const gr = ctx.createLinearGradient(0, 560, 0, H); gr.addColorStop(0, 'rgba(10,14,10,0)'); gr.addColorStop(0.3, '#121812'); gr.addColorStop(1, '#07090a');
+  ctx.fillStyle = gr; ctx.fillRect(0, 560, W, H - 560);
+  // Römer (rechts), hintere Reihe zuerst
+  for (let r = 0; r < 2; r++) for (let i = 0; i < 6; i++) {
+    const x = front + 60 + i * 95 + r * 45, y = gy - 22 + r * 0 - (1 - r) * 0;
+    if (x > W + 80) continue;
+    sprite(IMG.legionaer, x, gy - (1 - r) * 0 - r * 26, 128 - r * 14, false, r ? 0.75 : 1);
+  }
+  // Britannier (links)
+  for (let r = 0; r < 2; r++) for (let i = 0; i < 6; i++) {
+    const x = front - 60 - i * 100 - r * 45; if (x < -80) continue;
+    const bob = Math.abs(Math.sin(t * 5 + i * 1.3)) * 4;
+    sprite(IMG.held, x, gy - r * 26 - bob, 116 - r * 14, false, r ? 0.75 : 1);
+  }
+  // Frontlinie
+  ctx.strokeStyle = 'rgba(232,184,74,.5)'; ctx.setLineDash([6, 8]); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(front, 560); ctx.lineTo(front, 712); ctx.stroke(); ctx.setLineDash([]);
+  // Leiste: Wer gewinnt?
+  const bx = 340, bw = 600, by = 572;
+  rr(bx, by, bw, 14, 7); ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fill();
+  const mid = bx + bw / 2, px = mid + (G.pv / PMAX) * bw / 2;
+  ctx.fillStyle = G.pv >= 0 ? '#3e8fd1' : '#c0392b';
+  rr(Math.min(mid, px), by, Math.abs(px - mid), 14, 7); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.fillRect(mid - 1, by - 4, 2, 22);
+  txt('Britannier', bx - 12, by + 7, { a: 'right', s: 16, c: '#9fc9ff' });
+  txt('Römer', bx + bw + 12, by + 7, { s: 16, c: '#ff9a8f' });
+}
+
+// ---------- Aufgabe ----------
+function panel(t) {
+  const c = G.c, x = 60, y = 70, w = W - 120, h = 270;
+  rr(x, y, w, h, 18); ctx.fillStyle = 'rgba(14,16,22,.9)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = GOLD; ctx.stroke();
+  const steps = ['', 'Tippe das Wort an, das den Nebensatz einleitet.', 'Welche Art von Nebensatz ist das?', 'Wie übersetzt du hier „' + c.words[c.ein].replace(/[.,!?]/g, '') + '“?', 'Richtig bestimmt!'];
+  txt(c.step < 4 ? 'SCHRITT ' + c.step + ' VON 3' : 'GESCHAFFT', x + 28, y + 30, { s: 16, c: GOLD, f: F_HEAD, w: 700 });
+  txt(steps[c.step], x + 28, y + 60, { s: 24, c: '#fff' });
+  // Wörter als Chips
+  ctx.font = `800 36px ${F_TXT}`;
+  const gap = 12, padX = 16, chipH = 56;
+  const ws = c.words.map(wd => ctx.measureText(wd).width + padX * 2);
+  const rows = []; let row = [], rw = 0;
+  ws.forEach((wd, i) => { if (rw + wd > w - 60 && row.length) { rows.push(row); row = []; rw = 0; } row.push(i); rw += wd + gap; });
+  if (row.length) rows.push(row);
+  const top = y + 100 + (rows.length === 1 ? 26 : 0);
+  rows.forEach((r, ri) => {
+    const tot = r.reduce((s, i) => s + ws[i] + gap, -gap); let cx = x + (w - tot) / 2;
+    r.forEach(i => {
+      const cy = top + ri * (chipH + 10), isE = i === c.ein, marked = isE && c.step > 1;
+      const flash = c.flashWord === i && c.flashT > 0;
+      rr(cx, cy, ws[i], chipH, 10);
+      ctx.fillStyle = marked ? '#e8b84a' : flash ? '#8f1d22' : 'rgba(243,233,210,.08)'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = marked ? '#fff3c4' : 'rgba(243,233,210,.25)'; ctx.stroke();
+      txt(c.words[i], cx + ws[i] / 2, cy + chipH / 2 + 1, { a: 'center', s: 36, c: marked ? '#2a1c10' : '#fff' });
+      if (c.step === 1) K.button(cx, cy, ws[i], chipH, () => {}, () => tapWord(i), { fill: 'rgba(0,0,0,0)', line: 'rgba(0,0,0,0)' });
+      cx += ws[i] + gap;
+    });
+  });
+  if (c.step > 2) txt('✓ ' + TYPEN[c.typ], x + w - 28, y + 30, { a: 'right', s: 18, c: '#8fe0a5' });
+  if (c.hint) txtBox(c.hint, x + 20, y + h - 52, w - 40, 44, { s: 20, lines: 2, c: '#ffb3a8' });
+}
+
+function options() {
+  const c = G.c, y = 360;
+  if (c.step === 2) {
+    const bw = 220, gap = 12, x0 = (W - (5 * bw + 4 * gap)) / 2;
+    TYPEN.forEach((t, k) => {
+      const dis = c.wrong.has(k);
+      button(x0 + k * (bw + gap), y, bw, 76, t, () => chooseTyp(k), { s: 22, disabled: dis, fill: dis ? 'rgba(60,20,24,.6)' : undefined, c: dis ? 'rgba(243,233,210,.35)' : CREAM });
+    });
+  } else if (c.step === 3) {
+    const bw = 270, gap = 14, x0 = (W - (4 * bw + 3 * gap)) / 2;
+    c.opts.forEach((o, k) => {
+      const dis = c.wrong.has(o);
+      button(x0 + k * (bw + gap), y, bw, 76, o, () => chooseUeb(o), { s: 23, disabled: dis, fill: dis ? 'rgba(60,20,24,.6)' : undefined, c: dis ? 'rgba(243,233,210,.35)' : CREAM });
+    });
+  } else if (c.step === 4) {
+    rr(200, y - 6, W - 400 - 220, 88, 14); ctx.fillStyle = 'rgba(20,60,34,.92)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#8fe0a5'; ctx.stroke();
+    txtBox(TYPEN[c.typ] + '  ·  ' + c.words[c.ein].replace(/[.,!?]/g, '') + ' = ' + c.ueb, 210, y - 6, W - 640, 88, { s: 24, lines: 2, c: '#fff' });
+    button(W - 400, y + 4, 200, 68, G.i + 1 >= G.pool.length ? 'Ergebnis' : 'Weiter', next, { s: 26, fill: '#7d1a20', line: GOLD });
+  }
+}
+
+function hud() {
+  rr(10, 10, 420, 50, 12); ctx.fillStyle = 'rgba(10,12,18,.78)'; ctx.fill();
+  txt(G.score + '', 30, 36, { s: 26, c: GOLD, f: F_HEAD, w: 900 });
+  txt('Satz ' + Math.min(G.pool.length, G.i + 1) + '/' + G.pool.length, 150, 36, { s: 18, c: CREAM });
+  if (G.streak >= 2) txt('Serie ×' + G.streak, 290, 36, { s: 18, c: '#9fc3ff' });
+  topButtons();
+}
+
+function menu(t) {
+  drawBg(t * 8, 0.55);
+  sprite(IMG.legionaer, 1060, 640, 300, false);
+  sprite(IMG.held, 860, 650, 260, false);
+  txt('MONS GRAUPIUS', 80, 110, { s: 72, c: GOLD, f: F_HEAD, w: 900, stroke: '#3b0a0e', sw: 10 });
+  txt('Prima · Lektion 20  ·  Nebensätze mit Konjunktiv', 84, 166, { s: 24, c: CREAM });
+  txt('Die Entscheidungsschlacht, 83 n. Chr. Jeder richtig bestimmte', 84, 204, { s: 21, c: 'rgba(243,233,210,.85)', w: 600 });
+  txt('Satz treibt die Legion zurück. Kein Zeitdruck – denk in Ruhe nach.', 84, 232, { s: 21, c: 'rgba(243,233,210,.85)', w: 600 });
+  rr(80, 270, 660, 200, 14); ctx.fillStyle = 'rgba(14,16,22,.85)'; ctx.fill();
+  txt('Pro Satz drei Schritte', 104, 300, { s: 20, c: GOLD, f: F_HEAD, w: 700 });
+  ['1  Einleitendes Wort antippen (cur, ut, ne, utrum …)', '2  Art des Nebensatzes bestimmen', '3  Richtige Übersetzung der Einleitung wählen', 'Richtig beim 1. Versuch: Britannier rücken vor.', 'Fehler: Die Römer rücken vor. 12 Sätze pro Schlacht.']
+    .forEach((l, i) => txt(l, 104, 336 + i * 28, { s: 18, c: CREAM, w: 600 }));
+  button(80, 496, 320, 84, 'In die Schlacht!', start, { s: 28, fill: '#7d1a20', line: GOLD, f: F_HEAD });
+  const r = store.get('schlacht', 0); if (r) txt('Rekord: ' + r, 420, 538, { s: 18, c: '#9fc3ff' });
+  topButtons();
+}
+
+function over(t) {
+  drawBg(0, 0.72); battlefield(t);
+  ctx.fillStyle = 'rgba(6,8,12,.55)'; ctx.fillRect(0, 0, W, H);
+  txt(G.sieg ? 'SIEG DER BRITANNIER!' : 'DIE LEGION SIEGT', W / 2, 88, { a: 'center', s: 54, c: G.sieg ? GOLD : '#ff8a7e', f: F_HEAD, w: 900, stroke: '#2a0608', sw: 10 });
+  txt(G.sieg ? 'Calgacus wäre stolz auf dich.' : 'Tacitus schreibt diesmal vom römischen Sieg – nochmal!', W / 2, 144, { a: 'center', s: 24, c: CREAM });
+  const box = (x, l, v, c) => { rr(x, 176, 230, 92, 14); ctx.fillStyle = 'rgba(14,16,22,.92)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(232,184,74,.5)'; ctx.stroke(); txt(v, x + 115, 212, { a: 'center', s: 34, c, f: F_HEAD, w: 900 }); txt(l, x + 115, 250, { a: 'center', s: 16, c: 'rgba(243,233,210,.75)', w: 600 }); };
+  const done = G.perfekt + G.fehler.length;
+  box(165, 'Punkte' + (G.neu ? ' · NEUER REKORD!' : ''), G.score + '', GOLD);
+  box(410, 'fehlerfrei', G.perfekt + ' / ' + done, '#8fe0a5');
+  box(655, 'beste Serie', '×' + G.best, '#9fc3ff');
+  box(900, 'Rekord', G.rekord + '', CREAM);
+  rr(165, 286, 965, 236, 14); ctx.fillStyle = 'rgba(14,16,22,.92)'; ctx.fill();
+  if (!G.fehler.length) txt('Alle Sätze fehlerfrei bestimmt. Stark!', W / 2, 404, { a: 'center', s: 28, c: '#8fe0a5' });
+  else {
+    txt('Diese Sätze schaust du dir noch einmal an:', 190, 312, { s: 20, c: '#ff8a7e', f: F_HEAD, w: 700 });
+    G.fehler.slice(0, 5).forEach((c, i) => {
+      const line = c.satz + '  →  ' + TYPEN[c.typ] + ', ' + c.words[c.ein].replace(/[.,!?]/g, '') + ' = ' + c.ueb;
+      const ft = fitText(line, 920, 1, 20, 700); txt(line, 190, 350 + i * 36, { s: ft.s, c: CREAM, w: 700 });
+    });
+  }
+  button(W / 2 - 290, 540, 270, 62, 'Nochmal', start, { s: 26, fill: '#7d1a20', line: GOLD });
+  button(W / 2 + 20, 540, 270, 62, 'Menü', () => { S.mode = 'menu'; }, { s: 26 });
+  topButtons();
+}
+
+function draw(t) {
+  if (S.mode === 'menu') return menu(t);
+  if (S.mode === 'over') return over(t);
+  drawBg(0, 0.3);
+  battlefield(t);
+  fxDraw();
+  panel(t); options(); hud();
+}
+K.run(update, draw);
+window.__game = { S, get G() { return G; }, start, tapWord, chooseTyp, chooseUeb, next, TYPEN };
+})();
+</script>
+</body>
+</html>
